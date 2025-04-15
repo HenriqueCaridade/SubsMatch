@@ -72,7 +72,7 @@ def main():
     parser.add_argument('path-to-dir', nargs='?', help='path to directory where the files are, if not given uses CWD')
     parser.add_argument('-p', '--preserve', action='store_true',
                         help='instead of renaming the subtitle files, they will be copied and the original files will be moved to a sub-directory')
-    parser.add_argument('-f', '--force', action='store_true', help='force rename/copy i.e. no confirmation prompt')
+    parser.add_argument('-f', '--force', action='store_true', help='force rename/copy (i.e. no confirmation prompt)')
 
     args = vars(parser.parse_args())
     path = args['path-to-dir']
@@ -121,8 +121,8 @@ def main():
             print(sub, '\t->', new_sub)
         while True:
             user_choice = input("Do you wish to rename this files? [Y/n]")
-            if len(user_choice) == 1 and user_choice in 'yYnN': break
-        do_action = user_choice in 'yY'
+            if len(user_choice) <= 1 and user_choice in 'yYnN': break
+        do_action = len(user_choice) == 0 or user_choice in 'yY'
 
     from os import mkdir, rename
     from os.path import exists as path_exists
