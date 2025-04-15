@@ -1,7 +1,6 @@
 
 # Pattern Matcher for the Video Files and for the Subtitle Files
 import re
-
 class Pattern:
     IDENTIFIER_REGEX = re.compile('|'.join([
         r'[Ss]\d{1,2}[Xx]?[Ee][Pp]?\d{1,3}',
@@ -114,15 +113,33 @@ def main():
         return f'{name}{ext}'
     matching = [(sub, match_extension(sub, vid)) for sub, vid in matching]    
 
+    # Check if files already renamed
+    not_already_matching = [(sub, new_sub) for sub, new_sub in matching if sub != new_sub]
+    already_matching_count = len(matching) - len(not_already_matching)
+    if already_matching_count > 0:
+        print(f'{already_matching_count} file(s) are already with the correct name.')
+    matching = not_already_matching
+
+    if len(matching) == 0:
+        print(f'0 files to match. Exiting...')
+        return
+    
     # Ask for confirmation (if force_flag is not active)
     do_action = force_flag
     if not force_flag:
         for sub, new_sub in matching:
             print(sub, '\t->', new_sub)
         while True:
-            user_choice = input("Do you wish to rename this files? [Y/n]")
+            user_choice = input("Do you wish to rename this file(s)? [Y/n]")
             if len(user_choice) <= 1 and user_choice in 'yYnN': break
         do_action = len(user_choice) == 0 or user_choice in 'yY'
+
+    prev_len = 0
+    def print_cr(s):
+        nonlocal prev_len
+        s = f'{s}{' ' * max(0, prev_len - len(s))}'
+        prev_len = len(s)
+        print(f'\r{s}', end='')
 
     from os import mkdir, rename
     from os.path import exists as path_exists
@@ -137,12 +154,20 @@ def main():
                 i += 1
             mkdir(new_directory_name)
             for sub, _ in matching: # Move to new dir
-                rename(sub, Path(new_directory_name) / sub)
+                new_file_name = Path(new_directory_name) / sub
+                print_cr(f'Moving \"{sub}\" -> \"{new_file_name}\"')
+                rename(sub, new_file_name)
+            print_cr(f'Moved {len(matching)} file(s).')
             for sub, new_sub in matching: # Copy with new name
-                copyfile(Path(new_directory_name) / sub, new_sub)
+                new_file_name = Path(new_directory_name) / sub
+                print_cr(f'Coping \"{new_file_name}\" -> \"{new_sub}\"')
+                copyfile(new_file_name, new_sub)
+            print_cr(f'Copied {len(matching)} file(s).')
         else: # Rename subtitles to the new name
             for sub, new_sub in matching:
+                print_cr(f'Renaming \"{sub}\" to \"{new_sub}\"')
                 rename(sub, new_sub)
+            print_cr(f'Renamed {len(matching)} file(s).')
 
 if __name__ == "__main__":
     main()
