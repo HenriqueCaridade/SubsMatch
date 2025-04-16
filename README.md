@@ -34,8 +34,10 @@ By running the script like this the cwd for the script will be set to the curren
 - Step 4: Run the script with the same syntax as before `python -m <your-script-name> [args]`
 
 This script simply "redirects" the call to the correct location.
+
 **Important Note:** the name of this "redirecting" file is the one you have to use when calling with `python -m <your-script-name> [args]`
 
+**Linux Note:** if on linux change `python` to `python3`
 ```py
 from pathlib import Path
 import os, sys
