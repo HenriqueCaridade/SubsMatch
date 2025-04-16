@@ -67,6 +67,7 @@ class Pattern:
                     sorted(filter(lambda p: p in self.patterns, other.patterns))))
 
 def main():
+
     # Parse system arguments
     import argparse
     
@@ -75,6 +76,7 @@ def main():
         description='This script matches the subtitle filenames to the video filenames of a given directory.')
     parser.add_argument('path-to-dir', nargs='?', help='path to directory where the files are, if not given uses CWD')
     parser.add_argument('-f', '--force', action='store_true', help='forces renaming/copying even if the files already have the correct name')
+    parser.add_argument('-n', '--no-color', action='store_true', help='removes ANSI codes used for the colors.')
     parser.add_argument('-p', '--preserve', action='store_true',
                         help='instead of renaming the subtitle files, they will be copied and the original files will be moved to a sub-directory')
     parser.add_argument('-s', '--skip-season', action='store_true',
@@ -86,18 +88,41 @@ def main():
     args = vars(parser.parse_args())
     path = args['path-to-dir']
     flag_skip_season = args['skip_season']
+    flag_no_color    = args['no_color']
     flag_preserve    = args['preserve']
     flag_force       = args['force']
     flag_quiet       = args['quiet']
     flag_verbose     = args['verbose']
     flag_yes         = args['yes']
+    
+    class tColors: # Terminal Colors (ANSI Codes)
+        BLACK   = '' if flag_no_color else '\033[30m' 
+        RED     = '' if flag_no_color else '\033[31m'
+        GREEN   = '' if flag_no_color else '\033[32m'
+        YELLOW  = '' if flag_no_color else '\033[33m'
+        BLUE    = '' if flag_no_color else '\033[34m'
+        MAGENTA = '' if flag_no_color else '\033[35m'
+        CYAN    = '' if flag_no_color else '\033[36m'
+        WHITE   = '' if flag_no_color else '\033[37m'
+        UNDERLINE = '' if flag_no_color else '\033[4m'
+        RESET     = '' if flag_no_color else '\033[0m'
+    class colors:
+        ERROR   = tColors.RED
+        WARNING = tColors.YELLOW
+        TITLE   = tColors.MAGENTA
+        NUMBER  = tColors.CYAN
+        PREV    = tColors.RED
+        NEW     = tColors.GREEN
+        YES     = tColors.GREEN
+        NO      = tColors.RED
+        RESET   = tColors.RESET
 
     if flag_quiet and not flag_yes:
-        print('Flag --quiet cannot be used without flag --yes.')
+        print(f'{colors.ERROR}Flag --quiet cannot be used without flag --yes.{colors.RESET}')
         return
     
     if flag_quiet and flag_verbose:
-        print('Flags --quiet and --verbose cannot be used simultaneously.')
+        print(f'{colors.ERROR}Flags --quiet and --verbose cannot be used simultaneously.{colors.RESET}')
         return
 
     PRESERVE_DIR = 'old_subs'
@@ -124,12 +149,12 @@ def main():
     subs = [file for file in listdir() if endswithany(file, subtitle_extensions)]
 
     if flag_verbose:
-        print('----- Videos Found -----')
-        for video in videos: print(video)
-        print(f'Found {len(videos)} video file(s).')
-        print('---- Subtitles Found ----')
-        for sub in subs: print(sub)
-        print(f'Found {len(subs)} subtitle file(s).')
+        print(f'{colors.TITLE}----- Videos Found -----{colors.RESET}')
+        for i, video in enumerate(videos, start=1): print(f'{colors.NUMBER}{i}.{colors.RESET} {video}')
+        print(f'Found {colors.NUMBER}{len(videos)}{colors.RESET} video file(s).')
+        print(f'{colors.TITLE}---- Subtitles Found ----{colors.RESET}')
+        for i, sub in enumerate(subs, start=1): print(f'{colors.NUMBER}{i}{colors.RESET}. {sub}')
+        print(f'Found {colors.NUMBER}{len(subs)}{colors.RESET} subtitle file(s).')
 
     try:
         video_pattern = Pattern(videos, skip_season=flag_skip_season)
@@ -139,15 +164,15 @@ def main():
         return
 
     if flag_verbose:
-        print('----- Videos Parsed -----')
+        print(f'{colors.TITLE}----- Videos Parsed -----{colors.RESET}')
         for patt_id, string in video_pattern.patterns.items():
-            print(f'{patt_id}:\t{string}')
-        print(f'Parsed {len(video_pattern.patterns)} video file(s).')
-        print('---- Subtitles Parsed ----')
+            print(f'{colors.NUMBER}{patt_id}{colors.RESET}:\t{string}')
+        print(f'Parsed {colors.NUMBER}{len(video_pattern.patterns)}{colors.RESET} video file(s).')
+        print(f'{colors.TITLE}---- Subtitles Parsed ----{colors.RESET}')
         for patt_id, string in sub_pattern.patterns.items():
-            print(f'{patt_id}:\t{string}')
-        print(f'Parsed {len(sub_pattern.patterns)} subtitle file(s).')
-        print('---- Matching ----')
+            print(f'{colors.NUMBER}{patt_id}{colors.RESET}:\t{string}')
+        print(f'Parsed {colors.NUMBER}{len(sub_pattern.patterns)}{colors.RESET} subtitle file(s).')
+        print(f'{colors.TITLE}---- Matching ----{colors.RESET}')
     matching = video_pattern.match(sub_pattern)
 
     # Rename subtitle files to the new name
@@ -164,68 +189,73 @@ def main():
     not_already_matching = [(sub, new_sub) for sub, new_sub in matching if sub != new_sub]
     already_matching_count = len(matching) - len(not_already_matching)
     if not flag_quiet and already_matching_count > 0:
-        print(f'{already_matching_count} file(s) are already with the correct name.')
+        print(f'{colors.NUMBER}{already_matching_count}{colors.RESET} file(s) are already with the correct name.')
         if flag_force:
             action_string = 'copy' if flag_preserve else 'rename' 
-            print(f'Forcing {action_string} anyway.')
+            print(f'{colors.WARNING}Forcing {action_string} anyway.{colors.RESET}')
     if not flag_force:
         matching = not_already_matching
     if not flag_quiet and len(matching) > 0:
         max_len = max(len(sub) for sub, _ in matching)
         for sub, new_sub in matching:
-            print(f'{sub}{' ' * (max_len - len(sub))} -> {new_sub}')
+            padding = ' ' * (max_len - len(sub))
+            print(f'{colors.PREV}{sub}{colors.RESET}{padding} -> {colors.NEW}{new_sub}{colors.RESET}')
     
     if len(matching) == 0:
-        if not flag_quiet: print('No matches found. Exiting...')
+        if not flag_quiet: print(f'{colors.WARNING}No matches found.{colors.RESET} Exiting...')
         return
-    if not flag_quiet: print(f'{len(matching)} match(es) found.')
+    if not flag_quiet: print(f'{colors.NUMBER}{len(matching)}{colors.RESET} match(es) found.')
 
     # Ask for confirmation (if flag_yes is not active)
     do_action = flag_yes
     if not flag_yes:
         for _ in range(10): # Max 10 times
-            user_choice = input("Do you wish to rename this file(s)? [Y/n]")
+            plural_str = 'this file' if len(matching) == 1 else 'these files'
+            user_choice = input(f'Do you wish to rename {plural_str}? [{colors.YES}Y{colors.RESET}/{colors.NO}n{colors.RESET}]')
             if len(user_choice) <= 1 and user_choice in 'yYnN': break
-            print('Please type y or n.')
+            print(f'{colors.WARNING}Please type y or n.{colors.RESET}')
         if len(user_choice) > 1 or user_choice not in 'yYnN':
-            print('Max tries reached. Exiting...')
+            print(f'{colors.ERROR}Max tries reached.{colors.RESET} Exiting...')
             return
         do_action = user_choice in 'yY' # if user_choice is empty it will default to True
+
+    if not do_action: return
 
     prev_len = 0
     def print_cr(s):
         nonlocal prev_len
-        s = f'{s}{' ' * max(0, prev_len - len(s))}'
+        padding = ' ' * max(0, prev_len - len(s))
+        s = f'{s}{padding}'
         prev_len = len(s)
         print(f'\r{s}', end='')
 
     from os import mkdir, rename
     from os.path import exists as path_exists
-    if do_action:
-        if flag_preserve: # Copy Subtitles to new file with new name
-            from shutil import copyfile
-            from pathlib import Path
-            i = 1
-            new_directory_name = PRESERVE_DIR
-            while path_exists(new_directory_name):
-                new_directory_name = f'{PRESERVE_DIR}{i}'
-                i += 1
-            mkdir(new_directory_name)
-            for sub, _ in matching: # Move to new dir
-                new_file_name = Path(new_directory_name) / sub
-                if not flag_quiet: print_cr(f'Moving \"{sub}\" -> \"{new_file_name}\"')
-                rename(sub, new_file_name)
-            if not flag_quiet: print_cr(f'Moved {len(matching)} file(s).')
-            for sub, new_sub in matching: # Copy with new name
-                new_file_name = Path(new_directory_name) / sub
-                if not flag_quiet: print_cr(f'Coping \"{new_file_name}\" -> \"{new_sub}\"')
-                copyfile(new_file_name, new_sub)
-            if not flag_quiet: print_cr(f'Copied {len(matching)} file(s) to directory \"{new_directory_name}\".')
-        else: # Rename subtitles to the new name
-            for sub, new_sub in matching:
-                if not flag_quiet: print_cr(f'Renaming \"{sub}\" to \"{new_sub}\"')
-                rename(sub, new_sub)
-            if not flag_quiet: print_cr(f'Renamed {len(matching)} file(s).')
+    if flag_preserve: # Copy Subtitles to new file with new name
+        from shutil import copyfile
+        from pathlib import Path
+        i = 1
+        new_directory_name = PRESERVE_DIR
+        while path_exists(new_directory_name):
+            new_directory_name = f'{PRESERVE_DIR}{i}'
+            i += 1
+        mkdir(new_directory_name)
+        for sub, _ in matching: # Move to new dir
+            new_file_name = Path(new_directory_name) / sub
+            if not flag_quiet: print_cr(f'Moving {colors.PREV}"{sub}"{colors.RESET} -> {colors.NEW}"{new_file_name}"{colors.RESET}')
+            rename(sub, new_file_name)
+        if not flag_quiet: print_cr(f'Moved {colors.NUMBER}{len(matching)}{colors.RESET} file(s).')
+        for sub, new_sub in matching: # Copy with new name
+            new_file_name = Path(new_directory_name) / sub
+            if not flag_quiet: print_cr(f'Coping {colors.PREV}"{new_file_name}"{colors.RESET} -> {colors.NEW}"{new_sub}"{colors.RESET}')
+            copyfile(new_file_name, new_sub)
+        if not flag_quiet: print_cr(f'Copied {colors.NUMBER}{len(matching)}{colors.RESET} file(s) to directory "{new_directory_name}".')
+    else: # Rename subtitles to the new name
+        for sub, new_sub in matching:
+            if not flag_quiet: print_cr(f'Renaming {colors.PREV}"{sub}"{colors.RESET} -> {colors.NEW}"{new_sub}"{colors.RESET}')
+            rename(sub, new_sub)
+        if not flag_quiet: print_cr(f'Renamed {colors.NUMBER}{len(matching)}{colors.RESET} file(s).')
+    if not flag_quiet: print()
 
 if __name__ == "__main__":
     try:
