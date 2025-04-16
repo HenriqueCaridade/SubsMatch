@@ -6,8 +6,8 @@ class Pattern:
         r'[Ss]\d{1,2}[Xx]?[Ee][Pp]?\d{1,3}',
         r'\d{1,2}[Xx]\d{1,3}', # Prefer ids with season
         r'[Ee][Pp]?\d{1,3}', # Otherwise take just episode
-        r'(?<![SsXx\d])\d{4}(?!p)', # Otherwise take a year (e.g. for movies)
-        r'(?<![SsXx\d])\d+(?!p)', # Otherwise take the first number that appears
+        r'(?<![SsXx\d])\d{4}(?![p\d])', # Otherwise take a year (e.g. for movies)
+        r'(?<![SsXx\d])\d+(?![p\d])', # Otherwise take the first number that appears
     ]))
 
     SEASON_ID_REGEX = re.compile(r'[Ss](\d{1,2})') # ONLY USED if IDENTIFIER_REGEX only found one number
@@ -15,22 +15,25 @@ class Pattern:
     IDENTIFIER_PARSE_REGEX = re.compile(r'(?:(\d+)\D+)?(\d+)$') # To get the numbers from identifier
 
     class PatternId:
-        def __init__(self, string):
+        def __init__(self, string, skip_season=False):
             self.string = string
+            self.skip_season = skip_season
             identifier = Pattern.extract_identifier(string)
-            self.id, self.id2 = Pattern.extract_ids(identifier, string)
+            self.id, self.id2 = Pattern.extract_ids(identifier, string, self.skip_season)
 
         def __lt__(self, other):
+            if self.skip_season and other.skip_season: return self.id < other.id
             return self.id2 < other.id2 or (self.id2 == other.id2 and self.id < other.id)
         def __eq__(self, other):
-            return self.id == other.id and self.id2 == other.id2
+            return self.id == other.id and ((self.skip_season and other.skip_season) or self.id2 == other.id2)
         def __hash__(self):
+            if self.skip_season: return self.id
             return self.id ^ (self.id2 << 16)
         
         def __repr__(self):
             return f'PatternId(string={self.string}, id={self.id}, id2={self.id2})'
         def __str__(self):
-            if self.id2 is None: return f'{self.id}'
+            if self.id2 is None: return f'E{self.id}'
             return f'S{self.id2}E{self.id}'
     
     @staticmethod
@@ -40,17 +43,18 @@ class Pattern:
         return res.group(0)
 
     @staticmethod
-    def extract_ids(identifier, string):
+    def extract_ids(identifier, string, skip_season=False):
         res = Pattern.IDENTIFIER_PARSE_REGEX.search(identifier)
         if res.group(2) is None: raise ValueError(f"\"{identifier}\" is not a valid identifier.")
         id1, id2 = int(res.group(2)), None if res.group(1) is None else int(res.group(1))
-        if id2 is not None: return id1, id2
+        if skip_season or id2 is not None: return id1, id2
         res = Pattern.SEASON_ID_REGEX.search(string)
         # Assume Season 1 if not given (or is doesn't matter for files which don't have seasons)
-        return id1, 1 if res is None else int(res.group(1))
+        return id1, (None if skip_season else 1) if res is None else int(res.group(1))
 
-    def __init__(self, strings):
-        pattern_gen = (Pattern.PatternId(string) for string in strings)
+    def __init__(self, strings, skip_season=False):
+        self.skip_season = skip_season
+        pattern_gen = (Pattern.PatternId(string, self.skip_season) for string in strings)
         self.patterns = { pattern_id: pattern_id.string for pattern_id in pattern_gen }
         if len(self.patterns) < len(strings):
             raise ValueError("Couldn't do 1 to 1 matching of the given strings to identifiers.")
@@ -65,24 +69,44 @@ class Pattern:
 def main():
     # Parse system arguments
     import argparse
+    
     parser = argparse.ArgumentParser(
         prog='subs_match',
         description='This script matches the subtitle filenames to the video filenames of a given directory.')
     parser.add_argument('path-to-dir', nargs='?', help='path to directory where the files are, if not given uses CWD')
+    parser.add_argument('-f', '--force', action='store_true', help='forces renaming/copying even if the files already have the correct name')
     parser.add_argument('-p', '--preserve', action='store_true',
                         help='instead of renaming the subtitle files, they will be copied and the original files will be moved to a sub-directory')
-    parser.add_argument('-f', '--force', action='store_true', help='force rename/copy (i.e. no confirmation prompt)')
+    parser.add_argument('-s', '--skip-season', action='store_true',
+                        help='ignores season numbers if it doesn\'t find them (instead of defaulting to season 1)')
+    parser.add_argument('-q', '--quiet', action='store_true', help='only show errors. Cannot be used without the --yes flag')
+    parser.add_argument('-v', '--verbose', action='store_true', help='also show files found and parsing results')
+    parser.add_argument('-y', '--yes', action='store_true', help='skip confirmation prompt')
 
     args = vars(parser.parse_args())
     path = args['path-to-dir']
-    preserve_flag = args['preserve']
-    force_flag = args['force']
+    flag_skip_season = args['skip_season']
+    flag_preserve    = args['preserve']
+    flag_force       = args['force']
+    flag_quiet       = args['quiet']
+    flag_verbose     = args['verbose']
+    flag_yes         = args['yes']
+
+    if flag_quiet and not flag_yes:
+        print('Flag --quiet cannot be used without flag --yes.')
+        return
+    
+    if flag_quiet and flag_verbose:
+        print('Flags --quiet and --verbose cannot be used simultaneously.')
+        return
 
     PRESERVE_DIR = 'old_subs'
 
-    from os import chdir, listdir
     # Set CWD to given path if given
+    from os import chdir, listdir
     if path is not None:
+        if flag_verbose:
+            print(f'Changing to directory "{path}"')
         chdir(path)
 
     # Separate Video Files and Subtitle Files
@@ -99,8 +123,31 @@ def main():
     videos = [file for file in listdir() if endswithany(file, video_extensions)]
     subs = [file for file in listdir() if endswithany(file, subtitle_extensions)]
 
-    video_pattern = Pattern(videos)
-    sub_pattern = Pattern(subs)
+    if flag_verbose:
+        print('----- Videos Found -----')
+        for video in videos: print(video)
+        print(f'Found {len(videos)} video file(s).')
+        print('---- Subtitles Found ----')
+        for sub in subs: print(sub)
+        print(f'Found {len(subs)} subtitle file(s).')
+
+    try:
+        video_pattern = Pattern(videos, skip_season=flag_skip_season)
+        sub_pattern = Pattern(subs, skip_season=flag_skip_season)
+    except ValueError as e:
+        print(e)
+        return
+
+    if flag_verbose:
+        print('----- Videos Parsed -----')
+        for patt_id, string in video_pattern.patterns.items():
+            print(f'{patt_id}:\t{string}')
+        print(f'Parsed {len(video_pattern.patterns)} video file(s).')
+        print('---- Subtitles Parsed ----')
+        for patt_id, string in sub_pattern.patterns.items():
+            print(f'{patt_id}:\t{string}')
+        print(f'Parsed {len(sub_pattern.patterns)} subtitle file(s).')
+        print('---- Matching ----')
     matching = video_pattern.match(sub_pattern)
 
     # Rename subtitle files to the new name
@@ -116,23 +163,34 @@ def main():
     # Check if files already renamed
     not_already_matching = [(sub, new_sub) for sub, new_sub in matching if sub != new_sub]
     already_matching_count = len(matching) - len(not_already_matching)
-    if already_matching_count > 0:
+    if not flag_quiet and already_matching_count > 0:
         print(f'{already_matching_count} file(s) are already with the correct name.')
-    matching = not_already_matching
-
-    if len(matching) == 0:
-        print(f'0 files to match. Exiting...')
-        return
-    
-    # Ask for confirmation (if force_flag is not active)
-    do_action = force_flag
-    if not force_flag:
+        if flag_force:
+            action_string = 'copy' if flag_preserve else 'rename' 
+            print(f'Forcing {action_string} anyway.')
+    if not flag_force:
+        matching = not_already_matching
+    if not flag_quiet and len(matching) > 0:
+        max_len = max(len(sub) for sub, _ in matching)
         for sub, new_sub in matching:
-            print(sub, '\t->', new_sub)
-        while True:
+            print(f'{sub}{' ' * (max_len - len(sub))} -> {new_sub}')
+    
+    if len(matching) == 0:
+        if not flag_quiet: print('No matches found. Exiting...')
+        return
+    if not flag_quiet: print(f'{len(matching)} match(es) found.')
+
+    # Ask for confirmation (if flag_yes is not active)
+    do_action = flag_yes
+    if not flag_yes:
+        for _ in range(10): # Max 10 times
             user_choice = input("Do you wish to rename this file(s)? [Y/n]")
             if len(user_choice) <= 1 and user_choice in 'yYnN': break
-        do_action = len(user_choice) == 0 or user_choice in 'yY'
+            print('Please type y or n.')
+        if len(user_choice) > 1 or user_choice not in 'yYnN':
+            print('Max tries reached. Exiting...')
+            return
+        do_action = user_choice in 'yY' # if user_choice is empty it will default to True
 
     prev_len = 0
     def print_cr(s):
@@ -144,7 +202,7 @@ def main():
     from os import mkdir, rename
     from os.path import exists as path_exists
     if do_action:
-        if preserve_flag: # Copy Subtitles to new file with new name
+        if flag_preserve: # Copy Subtitles to new file with new name
             from shutil import copyfile
             from pathlib import Path
             i = 1
@@ -155,19 +213,22 @@ def main():
             mkdir(new_directory_name)
             for sub, _ in matching: # Move to new dir
                 new_file_name = Path(new_directory_name) / sub
-                print_cr(f'Moving \"{sub}\" -> \"{new_file_name}\"')
+                if not flag_quiet: print_cr(f'Moving \"{sub}\" -> \"{new_file_name}\"')
                 rename(sub, new_file_name)
-            print_cr(f'Moved {len(matching)} file(s).')
+            if not flag_quiet: print_cr(f'Moved {len(matching)} file(s).')
             for sub, new_sub in matching: # Copy with new name
                 new_file_name = Path(new_directory_name) / sub
-                print_cr(f'Coping \"{new_file_name}\" -> \"{new_sub}\"')
+                if not flag_quiet: print_cr(f'Coping \"{new_file_name}\" -> \"{new_sub}\"')
                 copyfile(new_file_name, new_sub)
-            print_cr(f'Copied {len(matching)} file(s).')
+            if not flag_quiet: print_cr(f'Copied {len(matching)} file(s) to directory \"{new_directory_name}\".')
         else: # Rename subtitles to the new name
             for sub, new_sub in matching:
-                print_cr(f'Renaming \"{sub}\" to \"{new_sub}\"')
+                if not flag_quiet: print_cr(f'Renaming \"{sub}\" to \"{new_sub}\"')
                 rename(sub, new_sub)
-            print_cr(f'Renamed {len(matching)} file(s).')
+            if not flag_quiet: print_cr(f'Renamed {len(matching)} file(s).')
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print('\nIterrupted. Exiting...')
