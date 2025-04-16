@@ -2,13 +2,14 @@
 # Pattern Matcher for the Video Files and for the Subtitle Files
 import re
 class Pattern:
-    IDENTIFIER_REGEX = re.compile('|'.join([
-        r'[Ss]\d{1,2}[Xx]?[Ee][Pp]?\d{1,3}',
-        r'\d{1,2}[Xx]\d{1,3}', # Prefer ids with season
-        r'[Ee][Pp]?\d{1,3}', # Otherwise take just episode
-        r'(?<![SsXx\d])\d{4}(?![p\d])', # Otherwise take a year (e.g. for movies)
-        r'(?<![SsXx\d])\d+(?![p\d])', # Otherwise take the first number that appears
-    ]))
+    IDENTIFIER_REGEXS = [
+        re.compile(r'([Ss]\d{1,2}[Xx]?[Ee][Pp]?\d{1,3})'),
+        re.compile(r'(?<![a-zA-Z\d])\d{1,2}[Xx]\d{1,3}(?![a-zA-Z\d])'), # Prefer ids with season
+        re.compile(r'(?<![a-zA-Z\d])[Ee][Pp]?\d{1,3}(?![a-zA-Z\d])'), # Otherwise take just episode
+        re.compile(r'(?<![a-zA-Z\d])\d{1,3}(?![a-zA-Z\d])'), # Otherwise take just episode number
+        re.compile(r'(?<![a-zA-Z\d])\d{4}(?![a-zA-Z\d])'), # Otherwise take a year (e.g. for movies)
+        re.compile(r'(?<![a-zA-Z\d])\d{5,}(?![a-zA-Z\d])'), # Otherwise take the first number that appears
+    ]
 
     SEASON_ID_REGEX = re.compile(r'[Ss](\d{1,2})') # ONLY USED if IDENTIFIER_REGEX only found one number
 
@@ -20,6 +21,9 @@ class Pattern:
             self.skip_season = skip_season
             identifier = Pattern.extract_identifier(string)
             self.id, self.id2 = Pattern.extract_ids(identifier, string, self.skip_season)
+
+        def get_key(self):
+            return (self.id2, self.id)
 
         def __lt__(self, other):
             if self.skip_season and other.skip_season: return self.id < other.id
@@ -33,12 +37,17 @@ class Pattern:
         def __repr__(self):
             return f'PatternId(string={self.string}, id={self.id}, id2={self.id2})'
         def __str__(self):
-            if self.id2 is None: return f'E{self.id}'
-            return f'S{self.id2}E{self.id}'
+            return Pattern.PatternId.key2str(self.id2, self.id)
+        @staticmethod
+        def key2str(id2, id1):
+            if id2 is None: return f'E{id1}'
+            return f'S{id2}E{id1}'
     
     @staticmethod
     def extract_identifier(string):
-        res = Pattern.IDENTIFIER_REGEX.search(string)
+        for regex in Pattern.IDENTIFIER_REGEXS:
+            res = regex.search(string)
+            if res is not None: break
         if res is None: raise ValueError(f"\"{string}\" is not a valid episode name. Couldn't extract episode identifier.")
         return res.group(0)
 
@@ -54,20 +63,19 @@ class Pattern:
 
     def __init__(self, strings, skip_season=False):
         self.skip_season = skip_season
-        pattern_gen = (Pattern.PatternId(string, self.skip_season) for string in strings)
-        self.patterns = { pattern_id: pattern_id.string for pattern_id in pattern_gen }
-        if len(self.patterns) < len(strings):
-            raise ValueError("Couldn't do 1 to 1 matching of the given strings to identifiers.")
-    
+        pattern_list = [ Pattern.PatternId(string, self.skip_season) for string in strings ]
+        self.patterns = { pattern_id.get_key(): [] for pattern_id in pattern_list } # eliminates repeated ids
+        for pattern_id in pattern_list:
+            self.patterns[pattern_id.get_key()].append(pattern_id.string)
+
     def match(self, other):
         """
         Returns best matching of the most other's entries to self's entries possible
         """
-        return  list(map(lambda p: (p.string, self.patterns[p]),
-                    sorted(filter(lambda p: p in self.patterns, other.patterns))))
+        return  list(map(lambda key: (other.patterns[key][0], self.patterns[key][0]),
+                    sorted(filter(lambda key: key in self.patterns, other.patterns))))
 
 def main():
-
     # Parse system arguments
     import argparse
     
@@ -160,23 +168,43 @@ def main():
         video_pattern = Pattern(videos, skip_season=flag_skip_season)
         sub_pattern = Pattern(subs, skip_season=flag_skip_season)
     except ValueError as e:
-        print(e)
+        print(f'{colors.ERROR}{e}{colors.RESET}')
         return
+    
+    not_one_to_one_match_video = len(video_pattern.patterns) != len(videos)
+    not_one_to_one_match_subs = len(sub_pattern.patterns) != len(subs)
+    if (not_one_to_one_match_video or not_one_to_one_match_subs) and (flag_quiet or flag_yes):
+        print(f'{colors.ERROR}Couldn\'t do a 1 to 1 matching. Please run without the --quiet and --yes flags.{colors.RESET}')
+        return
+    
+    if flag_verbose or not_one_to_one_match_video:
+        print(f'{colors.TITLE}----- Videos Parsed -----{colors.RESET}')
+        for patt_id, strings in video_pattern.patterns.items():
+            patt_id = Pattern.PatternId.key2str(*patt_id)
+            for i, string in enumerate(strings):
+                header = f'{colors.NUMBER}{patt_id}{colors.RESET}:' if i == 0 else (' ' * (len(patt_id) + 1))
+                print(f'{header}\t{string}')
+        print(f'Parsed {colors.NUMBER}{len(videos)}{colors.RESET} video file(s).')
+    if not_one_to_one_match_video:
+        print(f'{colors.WARNING}Couldn\'t do a 1 to 1 matching on videos. Taking the first option(s).{colors.RESET}')
+    
+    if flag_verbose or not_one_to_one_match_subs:
+        print(f'{colors.TITLE}---- Subtitles Parsed ----{colors.RESET}')
+        for patt_id, strings in sub_pattern.patterns.items():
+            patt_id = Pattern.PatternId.key2str(*patt_id)
+            for i, string in enumerate(strings):
+                header = f'{colors.NUMBER}{patt_id}{colors.RESET}:' if i == 0 else (' ' * (len(patt_id) + 1))
+                print(f'{header}\t{string}')
+        print(f'Parsed {colors.NUMBER}{len(subs)}{colors.RESET} subtitle file(s).')
+    if not_one_to_one_match_subs:
+        print(f'{colors.WARNING}Couldn\'t do a 1 to 1 matching on subs. Taking the first option(s).{colors.RESET}')
 
     if flag_verbose:
-        print(f'{colors.TITLE}----- Videos Parsed -----{colors.RESET}')
-        for patt_id, string in video_pattern.patterns.items():
-            print(f'{colors.NUMBER}{patt_id}{colors.RESET}:\t{string}')
-        print(f'Parsed {colors.NUMBER}{len(video_pattern.patterns)}{colors.RESET} video file(s).')
-        print(f'{colors.TITLE}---- Subtitles Parsed ----{colors.RESET}')
-        for patt_id, string in sub_pattern.patterns.items():
-            print(f'{colors.NUMBER}{patt_id}{colors.RESET}:\t{string}')
-        print(f'Parsed {colors.NUMBER}{len(sub_pattern.patterns)}{colors.RESET} subtitle file(s).')
         print(f'{colors.TITLE}---- Matching ----{colors.RESET}')
     matching = video_pattern.match(sub_pattern)
 
     # Rename subtitle files to the new name
-    from os.path import splitext
+    from os.path import splitext, isfile
 
     # Match extensions
     def match_extension(sub, vid):
@@ -194,7 +222,17 @@ def main():
             action_string = 'copy' if flag_preserve else 'rename' 
             print(f'{colors.WARNING}Forcing {action_string} anyway.{colors.RESET}')
     if not flag_force:
-        matching = not_already_matching
+        matching = not_already_matching.copy()
+    
+    # Check if new file names are available
+    for sub, new_sub in not_already_matching:
+        if isfile(new_sub):
+            if flag_quiet:
+                print(f'{colors.ERROR}Not all new subtitle names are not available. Please run without the --quiet flag.{colors.RESET}')
+            print(f'{colors.WARNING}Filename {colors.RESET}"{new_sub}"{colors.WARNING} is not available. Removing it from matches.{colors.RESET}')
+            matching.remove((sub, new_sub))
+    
+    # Print matching results
     if not flag_quiet and len(matching) > 0:
         max_len = max(len(sub) for sub, _ in matching)
         for sub, new_sub in matching:
