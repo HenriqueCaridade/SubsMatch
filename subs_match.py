@@ -181,6 +181,7 @@ def _match_directory(colors, flags=FLAGS.NONE):
 
     current_directory = listdir()
     action_name_string = 'move and copy' if flag_preserve else 'rename' 
+    skip_action_string = 'Skipping' if flag_recursive else 'Exiting'
 
     # Recusively call _match_directory on sub_directories
     if flag_recursive:
@@ -212,7 +213,7 @@ def _match_directory(colors, flags=FLAGS.NONE):
         print(f'Found {colors.NUMBER}{len(videos)}{colors.RESET} video file(s).')
         print(f'Found {colors.NUMBER}{len(subs)}{colors.RESET} subtitle file(s).')
     if len(videos) == 0 or len(subs) == 0:
-        if not flag_quiet: print(f'{colors.WARNING}No files to match.{colors.RESET} Exiting...')
+        if not flag_quiet: print(f'{colors.WARNING}No files to match.{colors.RESET} {skip_action_string}...')
         return
     try:
         video_pattern = Pattern(videos, skip_season=flag_skip_season)
@@ -291,7 +292,7 @@ def _match_directory(colors, flags=FLAGS.NONE):
             print(f'{colors.PREV}{sub}{colors.RESET}{padding} -> {colors.NEW}{new_sub}{colors.RESET}')
     
     if len(matching) == 0:
-        if not flag_quiet: print(f'{colors.WARNING}No matches found.{colors.RESET} Exiting...')
+        if not flag_quiet: print(f'{colors.WARNING}No matches found.{colors.RESET} {skip_action_string}...')
         return
     if not flag_quiet: print(f'{colors.NUMBER}{len(matching)}{colors.RESET} match(es) found.')
 
@@ -305,7 +306,7 @@ def _match_directory(colors, flags=FLAGS.NONE):
             if len(user_choice) <= 1 and user_choice in 'yYnN': break
             print(f'{colors.WARNING}Please type y or n.{colors.RESET}')
         if len(user_choice) > 1 or user_choice not in 'yYnN':
-            print(f'{colors.ERROR}Maximum of {MAX_TRIES} tries reached.{colors.RESET} Exiting...')
+            print(f'{colors.ERROR}Maximum of {MAX_TRIES} tries reached.{colors.RESET} {skip_action_string}...')
             return
         do_action = user_choice in 'yY' # if user_choice is empty it will default to True
 
