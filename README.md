@@ -66,18 +66,19 @@ Check out the next section for more features of this script.
 ## Full Usage
 
 ```
-usage: subs_match [-h] [-f] [-n] [-p] [-s] [-q] [-v] [-y] [path-to-dir]
+usage: subs_match [-h] [-f] [-n] [-p] [-r] [-s] [-q] [-v] [-y] [path-to-dir]
 
 positional arguments:
   path-to-dir        path to directory where the files are, if not given uses CWD
 
-optional arguments:
+options:
   -h, --help         show this help message and exit
   -f, --force        forces renaming/copying even if the files already have the correct name
   -n, --no-color     removes ANSI codes used for the colors.
   -p, --preserve     instead of renaming the subtitle files, they will be copied and the original files will be moved to a sub-directory
-  -s, --skip-season  ignores season numbers (instead of defaulting to season 1)
-  -q, --quiet        only show errors. Cannot be used without the --yes flag
+  -r, --recursive    recursively calls script on every sub-directory (matching in only done with files in the same directory)
+  -s, --skip-season  ignores season numbers if it doesn't find them (instead of defaulting to season 1)
+  -q, --quiet        only show errors and prompt to confirm (if flag --yes is activated the prompt won't be shown)
   -v, --verbose      also show files found and parsing results
   -y, --yes          skip confirmation prompt
 ```
