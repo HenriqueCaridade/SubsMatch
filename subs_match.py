@@ -8,12 +8,12 @@ class Pattern:
     ]
 
     SEASON_REGEXS = [
-        re.compile(r'(?<![a-zA-Z\d])[Ss](\d{1,2})(?!\d)'),
+        re.compile(r'(?<![a-zA-Z\d])[Ss](\d{1,2})(?![a-zA-Z\d])'),
         re.compile(r'(?<![a-zA-Z\d])[Ss][Ee][Aa][Ss][Oo][Nn][^a-zA-Z\d]?(\d{1,2})(?!\d)'),
     ]
 
     EPISODE_REGEXS = [
-        re.compile(r'(?<![a-zA-Z\d])[Ee][Pp]?(\d{1,4})(?!\d)'),
+        re.compile(r'(?<![a-zA-Z\d])[Ee][Pp]?(\d{1,4})(?![a-zA-Z\d])'),
         re.compile(r'(?<![a-zA-Z\d])[Ee][Pp][Ii][Ss][Oo][Dd][Ee][^a-zA-Z\d]?(\d{1,4})(?!\d)'),
     ]
 
@@ -191,6 +191,9 @@ def main():
         print(f'Found {colors.NUMBER}{len(videos)}{colors.RESET} video file(s).')
         print(f'{colors.TITLE}---- Subtitles Found ----{colors.RESET}')
         for i, sub in enumerate(subs, start=1): print(f'{colors.NUMBER}{i}{colors.RESET}.\t{sub}')
+        print(f'Found {colors.NUMBER}{len(subs)}{colors.RESET} subtitle file(s).')
+    elif not flag_quiet:
+        print(f'Found {colors.NUMBER}{len(videos)}{colors.RESET} video file(s).')
         print(f'Found {colors.NUMBER}{len(subs)}{colors.RESET} subtitle file(s).')
 
     try:
