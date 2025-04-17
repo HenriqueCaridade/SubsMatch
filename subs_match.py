@@ -2,64 +2,93 @@
 # Pattern Matcher for the Video Files and for the Subtitle Files
 import re
 class Pattern:
-    IDENTIFIER_REGEXS = [
-        re.compile(r'([Ss]\d{1,2}[Xx]?[Ee][Pp]?\d{1,3})'),
-        re.compile(r'(?<![a-zA-Z\d])\d{1,2}[Xx]\d{1,3}(?![a-zA-Z\d])'), # Prefer ids with season
-        re.compile(r'(?<![a-zA-Z\d])[Ee][Pp]?\d{1,3}(?![a-zA-Z\d])'), # Otherwise take just episode
-        re.compile(r'(?<![a-zA-Z\d])\d{1,3}(?![a-zA-Z\d])'), # Otherwise take just episode number
-        re.compile(r'(?<![a-zA-Z\d])\d{4}(?![a-zA-Z\d])'), # Otherwise take a year (e.g. for movies)
-        re.compile(r'(?<![a-zA-Z\d])\d{5,}(?![a-zA-Z\d])'), # Otherwise take the first number that appears
+    IDENTIFIER_REGEXS = [ # Common season and episode identifiers
+        re.compile(r'(?<![a-zA-Z\d])[Ss](\d{1,2})[Xx]?[Ee][Pp]?(\d{1,4})(?!\d)'),
+        re.compile(r'(?<![a-zA-Z\d])(\d{1,2})[Xx](\d{1,4})(?![a-zA-Z\d])'),
     ]
 
-    SEASON_ID_REGEX = re.compile(r'[Ss](\d{1,2})') # ONLY USED if IDENTIFIER_REGEX only found one number
+    SEASON_REGEXS = [
+        re.compile(r'(?<![a-zA-Z\d])[Ss](\d{1,2})(?!\d)'),
+        re.compile(r'(?<![a-zA-Z\d])[Ss][Ee][Aa][Ss][Oo][Nn][^a-zA-Z\d]?(\d{1,2})(?!\d)'),
+    ]
 
-    IDENTIFIER_PARSE_REGEX = re.compile(r'(?:(\d+)\D+)?(\d+)$') # To get the numbers from identifier
+    EPISODE_REGEXS = [
+        re.compile(r'(?<![a-zA-Z\d])[Ee][Pp]?(\d{1,4})(?!\d)'),
+        re.compile(r'(?<![a-zA-Z\d])[Ee][Pp][Ii][Ss][Oo][Dd][Ee][^a-zA-Z\d]?(\d{1,4})(?!\d)'),
+    ]
+
+    NUMBER_REGEXS = [
+        re.compile(r'(?<![a-zA-Z\d])(\d{1,3})(?![a-zA-Z\d])'), # Take episode number
+        re.compile(r'(?<![a-zA-Z\d])(\d{4})(?![a-zA-Z\d])'), # Otherwise take a year (e.g. for movies)
+        re.compile(r'(?<![a-zA-Z\d])(\d{5,})(?![a-zA-Z\d])'), # Otherwise take the first number that appears
+    ]
+
 
     class PatternId:
         def __init__(self, string, skip_season=False):
             self.string = string
-            self.skip_season = skip_season
-            identifier = Pattern.extract_identifier(string)
-            self.id, self.id2 = Pattern.extract_ids(identifier, string, self.skip_season)
+            self.season, self.episode = Pattern.extract_season_episode(string, skip_season)
 
         def get_key(self):
-            return (self.id2, self.id)
+            return (self.season, self.episode)
 
         def __lt__(self, other):
-            if self.skip_season and other.skip_season: return self.id < other.id
-            return self.id2 < other.id2 or (self.id2 == other.id2 and self.id < other.id)
+            return self.season < other.season or (self.season == other.season and self.episode < other.episode)
         def __eq__(self, other):
-            return self.id == other.id and ((self.skip_season and other.skip_season) or self.id2 == other.id2)
+            return self.episode == other.episode and self.season == other.season
         def __hash__(self):
-            if self.skip_season: return self.id
-            return self.id ^ (self.id2 << 16)
+            if self.season < 0: return self.episode
+            return self.episode ^ (self.season << 16)
         
         def __repr__(self):
-            return f'PatternId(string={self.string}, id={self.id}, id2={self.id2})'
+            return f'PatternId(string={self.string}, episode={self.episode}, season={self.season})'
         def __str__(self):
-            return Pattern.PatternId.key2str(self.id2, self.id)
+            return Pattern.PatternId.key2str(self.season, self.episode)
         @staticmethod
-        def key2str(id2, id1):
-            if id2 is None: return f'E{id1}'
-            return f'S{id2}E{id1}'
+        def key2str(season, episode):
+            if season < 0: return f'E{episode}'
+            return f'S{season}E{episode}'
     
     @staticmethod
-    def extract_identifier(string):
+    def extract_season_episode(string, skip_season=False):
         for regex in Pattern.IDENTIFIER_REGEXS:
             res = regex.search(string)
-            if res is not None: break
-        if res is None: raise ValueError(f"\"{string}\" is not a valid episode name. Couldn't extract episode identifier.")
-        return res.group(0)
+            if res is not None:
+                return 0 if skip_season else int(res.group(1)), int(res.group(2))
+        episode_res = None
+        for regex in Pattern.EPISODE_REGEXS:
+            episode_res = regex.search(string)
+            if episode_res is not None: break
+        # Return if already found epside and don't need season
+        if skip_season and episode_res is not None: return -1, int(episode_res.group(1))
 
-    @staticmethod
-    def extract_ids(identifier, string, skip_season=False):
-        res = Pattern.IDENTIFIER_PARSE_REGEX.search(identifier)
-        if res.group(2) is None: raise ValueError(f"\"{identifier}\" is not a valid identifier.")
-        id1, id2 = int(res.group(2)), None if res.group(1) is None else int(res.group(1))
-        if skip_season or id2 is not None: return id1, id2
-        res = Pattern.SEASON_ID_REGEX.search(string)
-        # Assume Season 1 if not given (or is doesn't matter for files which don't have seasons)
-        return id1, (None if skip_season else 1) if res is None else int(res.group(1))
+        season_res = None
+        season_regex = None
+        for regex in Pattern.SEASON_REGEXS:
+            season_res = regex.search(string)
+            if season_res is not None:
+                season_regex = regex
+                break
+
+        # Return if found already have episode number (assume season 1 if not found)
+        if not skip_season and episode_res is not None:
+            return 1 if season_res is None else int(season_res.group(1)), int(episode_res.group(1))
+
+        # Remove season number if found
+        original_string = string
+        if season_res is not None:
+            string = season_regex.sub('', string)
+        
+        # Find first number as episode number
+        episode_res = None
+        for regex in Pattern.NUMBER_REGEXS:
+            episode_res = regex.search(string)
+            if episode_res is not None: break
+        if episode_res is None:
+            raise ValueError(f'"{original_string}" parsing failed. Couldn\'t extract episode number successfully.')
+        if skip_season: return -1, int(episode_res.group(1))
+        if season_res is None: return 1, int(episode_res.group(1)) # Assume season 1
+        return int(season_res.group(1)), int(episode_res.group(1))
 
     def __init__(self, strings, skip_season=False):
         self.skip_season = skip_season
@@ -158,10 +187,10 @@ def main():
 
     if flag_verbose:
         print(f'{colors.TITLE}----- Videos Found -----{colors.RESET}')
-        for i, video in enumerate(videos, start=1): print(f'{colors.NUMBER}{i}.{colors.RESET} {video}')
+        for i, video in enumerate(videos, start=1): print(f'{colors.NUMBER}{i}.{colors.RESET}\t{video}')
         print(f'Found {colors.NUMBER}{len(videos)}{colors.RESET} video file(s).')
         print(f'{colors.TITLE}---- Subtitles Found ----{colors.RESET}')
-        for i, sub in enumerate(subs, start=1): print(f'{colors.NUMBER}{i}{colors.RESET}. {sub}')
+        for i, sub in enumerate(subs, start=1): print(f'{colors.NUMBER}{i}{colors.RESET}.\t{sub}')
         print(f'Found {colors.NUMBER}{len(subs)}{colors.RESET} subtitle file(s).')
 
     try:
