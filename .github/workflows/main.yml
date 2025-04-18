@@ -32,7 +32,7 @@ jobs:
 
       - name: Build with PyInstaller
         run: |
-          pyinstaller --onefile subs_match.py
+          pyinstaller --onefile --clean --optimize 2 subs_match.py
 
       - name: Rename executable
         run: |

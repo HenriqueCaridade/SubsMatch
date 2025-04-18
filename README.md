@@ -15,6 +15,8 @@ There are available executable releases for every platform on the releases tab.
 
 These executables where compiled using [pyinstaller](https://github.com/pyinstaller/pyinstaller).
 
+**IMPORTANT NOTE**: If your antivirus flags the executables as trojan [read this](https://github.com/pyinstaller/pyinstaller/blob/develop/.github/ISSUE_TEMPLATE/antivirus.md#what-can-you-do-to-get-it-to-run-on-your-computer). TDLR: pyinstaller works by lanching an interpreter to run the code and that flags antiviruses as a trojan virus when it isn't.
+
 ## Usage
 
 Step 0: If you didn't add the executable to PATH or the python script to PYTHONPATH as described below, copy the executable for your machine OS from releases or copy the python script from the repository into the diretory.
