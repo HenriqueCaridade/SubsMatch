@@ -97,10 +97,10 @@ This section is how to run this script for a **one time use**. If you want this 
 
 ### With compiled executable
 
-- Step 1: Go the the release pages and download the correct executable for your OS.
+- Step 1: Go the the release pages and download the correct executable for your OS and rename it to `subs_match.exe` (or `subs_match` on linux and mac).
 - Step 2: Move it to the directory with the files you want to match.
 - Step 3: Open cmd and change to the correct directory `cd path/to/your/directory`
-- Step 4: Run script on the cmd with `subs_match [args]`.
+- Step 4: Run script on the cmd with `./subs_match [args]`.
 
 ### With python script
 
@@ -118,7 +118,7 @@ This section is about how to add this script to your enviroment variables to mak
 
 ### With compiled executable
 
-- Step 1: Go the the release pages and download the correct executable for your OS.
+- Step 1: Go the the release pages and download the correct executable for your OS and rename it to `subs_match.exe` (or `subs_match` on linux and mac).
 - Step 2: Save it in a safe directory and copy it's path.
 - Step 3: Add that path to the PATH enviroment variable.
 - Step 4: Run on the cmd with `subs_match [args]`.
