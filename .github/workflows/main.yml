@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*'  # Trigger only on tags like v1.0.0
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build for ${{ matrix.os }}
@@ -61,7 +64,7 @@ jobs:
           path: ./artifacts
 
       - name: Display files
-        run: ls -R ./artifacts
+        run: ls ./artifacts
         
       - name: Create Release
         uses: softprops/action-gh-release@v1
